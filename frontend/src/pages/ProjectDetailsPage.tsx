@@ -1,4 +1,14 @@
-import { ArrowLeft, Calendar, Globe, Loader2, RefreshCw, Save, Trash2 } from 'lucide-react'
+import {
+  ArrowLeft,
+  Calendar,
+  Globe,
+  Loader2,
+  Play,
+  RefreshCw,
+  Save,
+  ScanLine,
+  Trash2,
+} from 'lucide-react'
 import { useState, type ChangeEvent, type ComponentProps, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
@@ -17,9 +27,11 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { useProjectScans, useStartScan } from '@/hooks/useScans'
 import { useDeleteProject, useProject, useUpdateProject } from '@/hooks/useProjects'
 import { validateProject, type ProjectErrors } from '@/lib/projectValidation'
 import type { Project, ProjectStatus } from '@/services/projectService'
+import type { Scan, ScanStatus } from '@/services/scanService'
 
 type BadgeVariant = ComponentProps<typeof Badge>['variant']
 
@@ -28,6 +40,119 @@ const STATUS_STYLE: Record<ProjectStatus, { label: string; variant: BadgeVariant
   SCANNING: { label: 'Scanning', variant: 'secondary' },
   SCANNED: { label: 'Scanned', variant: 'default' },
   FAILED: { label: 'Failed', variant: 'destructive' },
+}
+
+const SCAN_STATUS_STYLE: Record<ScanStatus, { label: string; variant: BadgeVariant }> = {
+  PENDING: { label: 'Pending', variant: 'outline' },
+  RUNNING: { label: 'Running', variant: 'secondary' },
+  COMPLETED: { label: 'Completed', variant: 'default' },
+  FAILED: { label: 'Failed', variant: 'destructive' },
+}
+
+function formatScanDate(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(date)
+}
+
+interface ProjectScansSectionProps {
+  projectId: string
+  scans: Scan[] | undefined
+  isLoading: boolean
+  onStartScan: () => Promise<void>
+  isStarting: boolean
+  startError: unknown
+}
+
+/** Scans for a project: start a new scan and list previous runs. */
+function ProjectScansSection({
+  projectId,
+  scans,
+  isLoading,
+  onStartScan,
+  isStarting,
+  startError,
+}: ProjectScansSectionProps) {
+  return (
+    <Card>
+      <CardHeader className="gap-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <ScanLine className="size-4 text-muted-foreground" aria-hidden="true" />
+            <CardTitle className="text-base">Scans</CardTitle>
+          </div>
+          <Button onClick={() => void onStartScan()} disabled={isStarting} aria-busy={isStarting}>
+            {isStarting ? (
+              <>
+                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                Starting…
+              </>
+            ) : (
+              <>
+                <Play className="size-4" aria-hidden="true" />
+                Start scan
+              </>
+            )}
+          </Button>
+        </div>
+        <CardDescription>Runs axe-core against this project's website.</CardDescription>
+      </CardHeader>
+
+      <CardContent className="space-y-3">
+        {startError ? (
+          <p role="alert" className="text-sm text-destructive">
+            {startError instanceof Error ? startError.message : 'The scan could not be started.'}
+          </p>
+        ) : null}
+
+        {isLoading ? (
+          <div
+            role="status"
+            aria-label="Loading scans"
+            className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground"
+          >
+            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+            Loading scans…
+          </div>
+        ) : scans && scans.length > 0 ? (
+          <ul className="space-y-2">
+            {scans.map((scan) => {
+              const status = SCAN_STATUS_STYLE[scan.status]
+              return (
+                <li key={scan.id}>
+                  <Link
+                    to={`/projects/${projectId}/scans/${scan.id}`}
+                    className="flex items-center justify-between gap-3 rounded-lg border p-3 transition-colors hover:bg-accent/50"
+                  >
+                    <span className="flex min-w-0 items-center gap-2">
+                      {scan.status === 'RUNNING' || scan.status === 'PENDING' ? (
+                        <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" aria-hidden="true" />
+                      ) : (
+                        <ScanLine className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                      )}
+                      <span className="min-w-0 truncate text-sm">
+                        {formatScanDate(scan.createdAt)}
+                      </span>
+                    </span>
+                    <span className="flex shrink-0 items-center gap-2">
+                      {scan.accessibilityScore !== null ? (
+                        <span className="text-sm font-medium">{scan.accessibilityScore}</span>
+                      ) : null}
+                      <Badge variant={status.variant}>{status.label}</Badge>
+                    </span>
+                  </Link>
+                </li>
+              )
+            })}
+          </ul>
+        ) : (
+          <p className="py-6 text-center text-sm text-muted-foreground">
+            No scans yet — start one to analyze this website for accessibility issues.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  )
 }
 
 function formatDate(value: string): string {
@@ -159,7 +284,13 @@ export function ProjectDetailsPage() {
   const { data: project, isLoading, isError, error, refetch } = useProject(projectId)
   const updateProject = useUpdateProject()
   const deleteProject = useDeleteProject()
+  const startScan = useStartScan(projectId)
+  const { data: scans, isLoading: scansLoading } = useProjectScans(projectId)
   const [confirmOpen, setConfirmOpen] = useState(false)
+
+  async function handleStartScan() {
+    await startScan.mutateAsync('AXE')
+  }
 
   async function handleSave(input: { name: string; websiteUrl: string; description: string }) {
     if (!project) return
@@ -271,6 +402,15 @@ export function ProjectDetailsPage() {
             />
           </CardContent>
         </Card>
+
+        <ProjectScansSection
+          projectId={project.id}
+          scans={scans}
+          isLoading={scansLoading}
+          onStartScan={handleStartScan}
+          isStarting={startScan.isPending}
+          startError={startScan.isError ? startScan.error : null}
+        />
 
         <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
           <DialogContent>

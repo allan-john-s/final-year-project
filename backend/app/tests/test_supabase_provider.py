@@ -248,7 +248,9 @@ def test_verify_email_posts_to_verify(monkeypatch) -> None:
     method, url, kwargs = client.calls[0]
     assert method == "post"
     assert url == "https://example.supabase.co/auth/v1/verify"
-    assert kwargs["json"] == {"type": "signup", "token": "verify-tok"}
+    # The confirmation-link token is a hash: GoTrue expects it as ``token_hash``
+    # (same mapping supabase-js applies in verifyOtp).
+    assert kwargs["json"] == {"type": "signup", "token_hash": "verify-tok"}
 
 
 def test_sign_out_is_stateless() -> None:

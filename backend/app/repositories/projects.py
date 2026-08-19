@@ -9,6 +9,7 @@ client access, this layer protects service-role access. Defense in depth.
 Row → :class:`Project` mapping keeps the rest of the app storage-agnostic.
 """
 
+import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -180,9 +181,22 @@ class SupabaseProjectRepository:
         return len(response.json()) > 0
 
 
+_FRACTIONAL_SECONDS = re.compile(r"\.(\d+)([+-]|$)")
+
+
 def _parse_iso(value: str) -> datetime:
-    """Parse a PostgREST ISO-8601 timestamp (``Z`` or ``+00:00`` suffix)."""
+    """Parse a PostgREST ISO-8601 timestamp (``Z`` or ``+00:00`` suffix).
+
+    PostgREST trims trailing zeros in fractional seconds (``.874710`` →
+    ``.87471``); pad back to 6 digits so ``fromisoformat`` accepts it.
+    """
     normalized = value.replace("Z", "+00:00")
+
+    def _pad(match: "re.Match[str]") -> str:
+        fraction = match.group(1)[:6].ljust(6, "0")
+        return f".{fraction}{match.group(2)}"
+
+    normalized = _FRACTIONAL_SECONDS.sub(_pad, normalized)
     parsed = datetime.fromisoformat(normalized)
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)

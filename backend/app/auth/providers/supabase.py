@@ -190,10 +190,13 @@ class SupabaseAuthProvider(AuthProvider):
         )
 
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            # The token in the confirmation link is a hash, not a 6-digit OTP:
+            # GoTrue's /verify expects it as ``token_hash`` (the same mapping
+            # supabase-js applies in verifyOtp).
             response = await client.post(
                 f"{self._base_url}/auth/v1/verify",
                 headers=self._headers(),
-                json={"type": "signup", "token": token},
+                json={"type": "signup", "token_hash": token},
             )
         self._raise_for_status(response, "verify email")
 

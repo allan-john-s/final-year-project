@@ -55,6 +55,21 @@ class Settings(BaseSettings):
     def strip_trailing_slashes(cls, value: list[str]) -> list[str]:
         return [origin.rstrip("/") for origin in value]
 
+    # --- LLM (strategy generation, Module 4) ---
+    # Provider used to generate candidate remediation strategies. ``mock`` is
+    # a deterministic, clearly-labeled provider for tests and demonstrations;
+    # ``openai`` (default) targets any OpenAI-compatible chat-completions
+    # endpoint (OpenAI, Azure OpenAI, local gateways) via LLM_BASE_URL.
+    # When ``openai`` is selected without LLM_API_KEY the strategy API fails
+    # gracefully (503) — it never silently substitutes a fake generator.
+    llm_provider: str = "openai"
+    llm_model: str = "gpt-4o-mini"
+    llm_api_key: str = ""
+    llm_base_url: str = "https://api.openai.com/v1"
+    llm_temperature: float = 0.2
+    llm_max_tokens: int = 3000
+    llm_timeout_seconds: float = 60.0
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -1,0 +1,42 @@
+<!doctype html>
+<html>
+  <!-- deliberate violations (see docs/module3b-scanner-engine.md §8):
+       1. no lang attribute           → html-has-lang (serious)
+       2. image without alt           → image-alt (critical)
+       3. low contrast text           → color-contrast (serious)
+       4. input without label         → label (critical)
+       5. button without text         → button-name (critical)
+       6. heading order h1 → h3       → heading-order (moderate)
+       7. link with no name           → link-name (serious)
+       8. duplicate element id        → duplicate-id (minor)
+  -->
+  <head>
+    <meta charset="utf-8" />
+    <title>Accessibility test target</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        max-width: 40rem;
+        margin: 2rem auto;
+        padding: 0 1rem;
+      }
+      .muted {
+        color: #999999; /* 2.8:1 contrast on white — fails WCAG AA */
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Accessibility test target</h1>
+    <p class="muted">This paragraph uses low-contrast text on purpose.</p>
+    <img src="placeholder.png" width="64" height="64" />
+    <h3>Sub-section</h3>
+    <p>Skip an h2 to trigger a heading-order violation.</p>
+    <div id="widget">Widget content</div>
+    <div id="widget">Duplicate identifier</div>
+    <form>
+      <input type="text" name="search" />
+    </form>
+    <button type="button"><img src="icon.png" alt="" /></button>
+    <a href="https://example.com"></a>
+  </body>
+</html>

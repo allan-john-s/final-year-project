@@ -6,6 +6,7 @@ pydantic-settings>=2.6,<3.0
 httpx>=0.27
 pyjwt>=2.8,<3.0
 cryptography>=42
+playwright>=1.45,<2.0   # headless browser driver for the axe-core scanner (Module 3B)
 
 # --- Testing ---
 pytest>=8.3

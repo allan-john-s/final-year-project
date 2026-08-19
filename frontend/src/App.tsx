@@ -6,7 +6,9 @@ import { AuthProvider } from '@/contexts/AuthContext'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { LandingPage } from '@/pages/LandingPage'
 import { ProjectDetailsPage } from '@/pages/ProjectDetailsPage'
+import { ContextPage } from '@/pages/ContextPage'
 import { ProjectsPage } from '@/pages/ProjectsPage'
+import { ScanDetailsPage } from '@/pages/ScanDetailsPage'
 import { EmailVerificationPage } from '@/pages/auth/EmailVerificationPage'
 import { ForgotPasswordPage } from '@/pages/auth/ForgotPasswordPage'
 import { LoginPage } from '@/pages/auth/LoginPage'
@@ -72,6 +74,22 @@ export default function App() {
           element={
             <ProtectedRoute>
               <ProjectDetailsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/projects/:projectId/scans/:scanId"
+          element={
+            <ProtectedRoute>
+              <ScanDetailsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/projects/:projectId/scans/:scanId/context"
+          element={
+            <ProtectedRoute>
+              <ContextPage />
             </ProtectedRoute>
           }
         />
