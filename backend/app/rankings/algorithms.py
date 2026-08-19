@@ -86,7 +86,7 @@ def compute_weighted_score(
         + evaluation.compatibility_score * weights.compatibility
         + evaluation.risk_score * weights.risk
     )
-    return round(score, 4)
+    return min(10.0, round(score, 4))
 
 
 def detect_context_factors(

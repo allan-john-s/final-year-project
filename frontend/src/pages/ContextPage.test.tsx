@@ -8,6 +8,7 @@ import { useContextDocument } from '@/hooks/useContext'
 import { useEvaluateStrategies } from '@/hooks/useEvaluations'
 import { useGenerateStrategies } from '@/hooks/useStrategies'
 import { useRankStrategies } from '@/hooks/useRankings'
+import { useGenerateRemediation, useRemediations, useUpdateRemediationStatus } from '@/hooks/useRemediations'
 import { createAuthValue } from '@/test/authValue'
 import type { EvaluationBatch } from '@/services/evaluationService'
 import type { CandidateStrategy, StrategyGeneration } from '@/services/strategyService'
@@ -22,12 +23,21 @@ vi.mock('@/hooks/useEvaluations', () => ({ useEvaluateStrategies: vi.fn() }))
 
 vi.mock('@/hooks/useRankings', () => ({ useRankStrategies: vi.fn() }))
 
+vi.mock('@/hooks/useRemediations', () => ({
+  useGenerateRemediation: vi.fn(),
+  useRemediations: vi.fn(),
+  useUpdateRemediationStatus: vi.fn(),
+}))
+
 vi.mock('@/hooks/useAuth', () => ({ useAuth: vi.fn() }))
 
 const mockedUseContext = vi.mocked(useContextDocument)
 const mockedUseGenerate = vi.mocked(useGenerateStrategies)
 const mockedUseEvaluate = vi.mocked(useEvaluateStrategies)
 const mockedUseRank = vi.mocked(useRankStrategies)
+const mockedUseGenerateRemediation = vi.mocked(useGenerateRemediation)
+const mockedUseRemediations = vi.mocked(useRemediations)
+const mockedUseUpdateRemediationStatus = vi.mocked(useUpdateRemediationStatus)
 const mockedUseAuth = vi.mocked(useAuth)
 
 const CONTEXT = {
@@ -495,6 +505,27 @@ describe('ContextPage strategy generation', () => {
     evaluationOutcome.current = vi.fn().mockResolvedValue(EVALUATION_BATCH)
     mockedUseEvaluate.mockImplementation(FakeUseEvaluateStrategies)
     mockedUseRank.mockReturnValue({
+      isPending: false,
+      isError: false,
+      error: null,
+      data: null,
+      mutateAsync: vi.fn(),
+    } as never)
+    mockedUseGenerateRemediation.mockReturnValue({
+      isPending: false,
+      isError: false,
+      error: null,
+      data: null,
+      mutateAsync: vi.fn(),
+    } as never)
+    mockedUseRemediations.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    } as never)
+    mockedUseUpdateRemediationStatus.mockReturnValue({
       isPending: false,
       isError: false,
       error: null,

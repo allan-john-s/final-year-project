@@ -20,6 +20,7 @@ import { useState, type ComponentProps } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
 import { AppHeader } from '@/components/layout/AppHeader'
+import { useGenerateRemediation } from '@/hooks/useRemediations'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -740,6 +741,7 @@ function StrategySection({ scanId, context }: StrategySectionProps) {
   const [ranking, setRanking] = useState<RankingBatch | null>(null)
   const [comparison, setComparison] = useState<RankingBatch | null>(null)
   const [rankingMode, setRankingMode] = useState<'baseline' | 'contextual'>('contextual')
+  const generateRemediation = useGenerateRemediation(scanId)
   // The exact target the generated strategies belong to, so evaluation always
   // uses the same target even if the selects change afterwards.
   const [generationTarget, setGenerationTarget] = useState<{ issueId: string; groupId: string } | null>(null)
@@ -812,6 +814,22 @@ function StrategySection({ scanId, context }: StrategySectionProps) {
       setRanking(rankingResult)
     } catch {
       // The failure is surfaced through rankMutation.isError below.
+    }
+  }
+
+  async function handleRemediate() {
+    if (!result || !batch || !ranking || !generationTarget) return
+    const recommended = ranking.rankedStrategies.find((r) => r.rank === 1)
+    if (!recommended) return
+    try {
+      await generateRemediation.mutateAsync({
+        issueId: generationTarget.issueId || '',
+        strategyId: recommended.strategyId,
+        strategies: result.strategies,
+        evaluations: batch.evaluations,
+      })
+    } catch {
+      // The failure is surfaced through generateRemediation.isError below.
     }
   }
 
@@ -1162,6 +1180,50 @@ function StrategySection({ scanId, context }: StrategySectionProps) {
                   comparePending={rankMutation.isPending}
                 />
               )}
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
+
+      {ranking ? (
+        <div className="mt-4 space-y-4">
+          <Card className="gap-4">
+            <CardHeader className="gap-2">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Wand2 className="size-4 text-muted-foreground" aria-hidden="true" />
+                Generate remediation
+              </CardTitle>
+              <CardDescription>
+                Generate a structured, reviewable remediation proposal for the recommended
+                strategy. The proposal includes before/after code, implementation steps,
+                and validation requirements. Module 7 does NOT automatically modify source
+                code — the developer reviews and decides whether to apply the fix.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {generateRemediation.isError ? (
+                <p role="alert" className="text-sm text-destructive">
+                  {errorMessage(generateRemediation.error)}
+                </p>
+              ) : null}
+
+              <Button
+                onClick={() => void handleRemediate()}
+                disabled={generateRemediation.isPending || !ranking.rankedStrategies.find((r) => r.rank === 1)}
+                aria-busy={generateRemediation.isPending}
+              >
+                {generateRemediation.isPending ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                    Generating remediation…
+                  </>
+                ) : (
+                  <>
+                    <Wand2 className="size-4" aria-hidden="true" />
+                    Generate remediation
+                  </>
+                )}
+              </Button>
             </CardContent>
           </Card>
         </div>

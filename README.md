@@ -16,7 +16,7 @@ Detect → Enrich Context → Generate Strategies → Evaluate → Rank → Reco
 Each step is an isolated, testable service so the decision pipeline itself is reproducible and defensible
 in an IEEE / Springer / Scopus submission.
 
-> **Status: Modules 1–6 complete.** Module 1 shipped provider-agnostic
+> **Status: Modules 1–7 complete.** Module 1 shipped provider-agnostic
 > authentication infrastructure plus a real **Supabase Auth** provider with **JWKS-based
 > asymmetric JWT verification** (`iss`/`aud`/`exp`/`sub` checks, automatic key-rotation
 > recovery), bearer-authenticated `/api/v1/auth/me`, session persistence, and auto token
@@ -51,7 +51,7 @@ in an IEEE / Springer / Scopus submission.
 > from the ContextDocument, human-readable ranking explanations, and a baseline vs
 > contextual comparison view — served by `POST /scans/{id}/ranking` with ranked strategy
 > cards and comparison UI in the React context view — see `docs/module6-strategy-ranking.md`.
-> Generation, evaluation, and ranking are all on demand; remediation is next.
+> Generation, evaluation, and ranking are all on demand; re-scanning and improvement measurement are next.
 
 ## Monorepo Layout
 
@@ -123,6 +123,7 @@ cp backend/.env.example backend/.env
 | 4      | Multi-strategy generation (CandidateStrategy pipeline, provider abstraction, versioned prompts, `POST /scans/{id}/strategies` + UI) | ✅ Done — mock provider live-verified; real LLM needs `LLM_API_KEY` |
 | 5      | Strategy evaluation (independent 7-dimensional evaluation per candidate, provider abstraction, versioned evaluation prompts, `POST /scans/{id}/evaluations` + UI) | ✅ Done — mock evaluator live-verified; real LLM needs `LLM_API_KEY` |
 | 6      | Context-aware strategy ranking (weighted scoring, baseline vs contextual, context factors, comparison, `POST /scans/{id}/ranking` + UI) | ✅ Done |
+| 7      | Remediation (structured proposal generation, review-first workflow, status lifecycle, `POST /scans/{id}/remediation` + UI) | ✅ Done — mock provider; real LLM needs `LLM_API_KEY` |
 
 ## License
 
