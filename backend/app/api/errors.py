@@ -12,6 +12,7 @@ from app.context.exceptions import ContextError
 from app.evaluations.exceptions import EvaluationError
 from app.projects.exceptions import ProjectError
 from app.rankings.exceptions import RankingError
+from app.measurements.exceptions import MeasurementError
 from app.remediations.exceptions import RemediationError
 from app.scans.exceptions import ScanError
 from app.schemas.auth import ErrorResponse
@@ -65,6 +66,9 @@ def _remediation_error_handler(request: Request, exc: RemediationError) -> JSONR
     """Render any :class:`RemediationError` as a uniform JSON error payload."""
     return _error_response(exc, exc.status_code, exc.code)
 
+def _measurement_error_handler(request: Request, exc: MeasurementError) -> JSONResponse:
+    """Render any :class:`MeasurementError` as a uniform JSON error payload."""
+    return _error_response(exc, exc.status_code, exc.code)
 
 def register_exception_handlers(app: FastAPI) -> None:
     """Attach all application-level exception handlers to ``app``."""
@@ -76,3 +80,4 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(EvaluationError, _evaluation_error_handler)
     app.add_exception_handler(RankingError, _ranking_error_handler)
     app.add_exception_handler(RemediationError, _remediation_error_handler)
+    app.add_exception_handler(MeasurementError, _measurement_error_handler)

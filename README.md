@@ -16,7 +16,7 @@ Detect → Enrich Context → Generate Strategies → Evaluate → Rank → Reco
 Each step is an isolated, testable service so the decision pipeline itself is reproducible and defensible
 in an IEEE / Springer / Scopus submission.
 
-> **Status: Modules 1–7 complete.** Module 1 shipped provider-agnostic
+> **Status: Modules 1–8 complete.** Module 1 shipped provider-agnostic
 > authentication infrastructure plus a real **Supabase Auth** provider with **JWKS-based
 > asymmetric JWT verification** (`iss`/`aud`/`exp`/`sub` checks, automatic key-rotation
 > recovery), bearer-authenticated `/api/v1/auth/me`, session persistence, and auto token
@@ -51,7 +51,17 @@ in an IEEE / Springer / Scopus submission.
 > from the ContextDocument, human-readable ranking explanations, and a baseline vs
 > contextual comparison view — served by `POST /scans/{id}/ranking` with ranked strategy
 > cards and comparison UI in the React context view — see `docs/module6-strategy-ranking.md`.
-> Generation, evaluation, and ranking are all on demand; re-scanning and improvement measurement are next.
+> **Module 7** added **reviewable remediation proposals**: structured proposals with
+> before/after code, implementation steps, validation requirements, and a review-first
+> workflow (PROPOSED → REVIEWED → ACCEPTED/REJECTED → APPLIED) — served by
+> `POST /scans/{id}/remediation` with proposal display in the React context view — see
+> `docs/module7-remediation.md`. **Module 8** added **re-scan and improvement measurement**:
+> deterministic comparison of original vs follow-up scans with issue fingerprinting,
+> severity burden analysis, and objective improvement classification (IMPROVED/NO_CHANGE/
+> REGRESSED) — served by `POST /remediations/{id}/measure` with a Before vs After report
+> in the React context view — see `docs/module8-measurement.md`.
+> Generation, evaluation, and ranking are all on demand; the complete pipeline is now
+> verified end-to-end.
 
 ## Monorepo Layout
 
@@ -65,7 +75,17 @@ in an IEEE / Springer / Scopus submission.
 │       ├── services/         #   application services (decision pipeline)
 │       ├── repositories/     #   data access (repository pattern)
 │       ├── schemas/          #   Pydantic v2 request/response schemas
-│       ├── models/           #   domain models
+│       ├── scanners/         #   scanner engine + models
+│       ├── scans/            #   scan domain (models, services)
+│       ├── context/          #   context builder (ContextDocument)
+│       ├── strategies/       #   multi-strategy generation (Module 4)
+│       ├── evaluations/      #   7-dimensional evaluation (Module 5)
+│       ├── rankings/         #   context-aware ranking (Module 6)
+│       ├── remediations/     #   remediation proposals (Module 7)
+│       ├── measurements/     #   re-scan & improvement measurement (Module 8)
+│       ├── auth/             #   authentication domain
+│       ├── projects/         #   project management domain
+│       ├── dependencies/     #   FastAPI dependency injection
 │       ├── utils/            #   shared helpers
 │       └── tests/            #   unit/integration tests
 ├── docs/                     # architecture, decisions (ADR), paper artifacts
@@ -124,6 +144,7 @@ cp backend/.env.example backend/.env
 | 5      | Strategy evaluation (independent 7-dimensional evaluation per candidate, provider abstraction, versioned evaluation prompts, `POST /scans/{id}/evaluations` + UI) | ✅ Done — mock evaluator live-verified; real LLM needs `LLM_API_KEY` |
 | 6      | Context-aware strategy ranking (weighted scoring, baseline vs contextual, context factors, comparison, `POST /scans/{id}/ranking` + UI) | ✅ Done |
 | 7      | Remediation (structured proposal generation, review-first workflow, status lifecycle, `POST /scans/{id}/remediation` + UI) | ✅ Done — mock provider; real LLM needs `LLM_API_KEY` |
+| 8      | Re-scan & measurement (issue fingerprinting, severity comparison, improvement classification, Before vs After report, `POST /remediations/{id}/measure` + UI) | ✅ Done |
 
 ## License
 

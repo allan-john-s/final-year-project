@@ -9,6 +9,7 @@ import { useEvaluateStrategies } from '@/hooks/useEvaluations'
 import { useGenerateStrategies } from '@/hooks/useStrategies'
 import { useRankStrategies } from '@/hooks/useRankings'
 import { useGenerateRemediation, useRemediations, useUpdateRemediationStatus } from '@/hooks/useRemediations'
+import { useCreateMeasurement } from '@/hooks/useMeasurements'
 import { createAuthValue } from '@/test/authValue'
 import type { EvaluationBatch } from '@/services/evaluationService'
 import type { CandidateStrategy, StrategyGeneration } from '@/services/strategyService'
@@ -29,6 +30,8 @@ vi.mock('@/hooks/useRemediations', () => ({
   useUpdateRemediationStatus: vi.fn(),
 }))
 
+vi.mock('@/hooks/useMeasurements', () => ({ useCreateMeasurement: vi.fn() }))
+
 vi.mock('@/hooks/useAuth', () => ({ useAuth: vi.fn() }))
 
 const mockedUseContext = vi.mocked(useContextDocument)
@@ -38,6 +41,7 @@ const mockedUseRank = vi.mocked(useRankStrategies)
 const mockedUseGenerateRemediation = vi.mocked(useGenerateRemediation)
 const mockedUseRemediations = vi.mocked(useRemediations)
 const mockedUseUpdateRemediationStatus = vi.mocked(useUpdateRemediationStatus)
+const mockedUseCreateMeasurement = vi.mocked(useCreateMeasurement)
 const mockedUseAuth = vi.mocked(useAuth)
 
 const CONTEXT = {
@@ -526,6 +530,13 @@ describe('ContextPage strategy generation', () => {
       refetch: vi.fn(),
     } as never)
     mockedUseUpdateRemediationStatus.mockReturnValue({
+      isPending: false,
+      isError: false,
+      error: null,
+      data: null,
+      mutateAsync: vi.fn(),
+    } as never)
+    mockedUseCreateMeasurement.mockReturnValue({
       isPending: false,
       isError: false,
       error: null,

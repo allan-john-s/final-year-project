@@ -21,6 +21,7 @@ import { Link, useParams } from 'react-router-dom'
 
 import { AppHeader } from '@/components/layout/AppHeader'
 import { useGenerateRemediation } from '@/hooks/useRemediations'
+import { useCreateMeasurement } from '@/hooks/useMeasurements'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -37,6 +38,8 @@ import type {
   StrategyType,
 } from '@/services/strategyService'
 import type { ContextFactor, RankingBatch, RankedStrategy } from '@/services/rankingService'
+import type { ImprovementMeasurement } from '@/services/measurementService'
+import type { RemediationProposal } from '@/services/remediationService'
 
 type BadgeVariant = ComponentProps<typeof Badge>['variant']
 
@@ -742,6 +745,10 @@ function StrategySection({ scanId, context }: StrategySectionProps) {
   const [comparison, setComparison] = useState<RankingBatch | null>(null)
   const [rankingMode, setRankingMode] = useState<'baseline' | 'contextual'>('contextual')
   const generateRemediation = useGenerateRemediation(scanId)
+  const createMeasurement = useCreateMeasurement()
+  const [remediationProposal, setRemediationProposal] = useState<RemediationProposal | null>(null)
+  const [measurementResult, setMeasurementResult] = useState<ImprovementMeasurement | null>(null)
+  const [followupScanId, setFollowupScanId] = useState('')
   // The exact target the generated strategies belong to, so evaluation always
   // uses the same target even if the selects change afterwards.
   const [generationTarget, setGenerationTarget] = useState<{ issueId: string; groupId: string } | null>(null)
@@ -781,6 +788,9 @@ function StrategySection({ scanId, context }: StrategySectionProps) {
     setComparison(null)
     setRankingMode('contextual')
     setGenerationTarget(null)
+    setRemediationProposal(null)
+    setMeasurementResult(null)
+    setFollowupScanId('')
   }
 
   async function handleEvaluate() {
@@ -817,22 +827,6 @@ function StrategySection({ scanId, context }: StrategySectionProps) {
     }
   }
 
-  async function handleRemediate() {
-    if (!result || !batch || !ranking || !generationTarget) return
-    const recommended = ranking.rankedStrategies.find((r) => r.rank === 1)
-    if (!recommended) return
-    try {
-      await generateRemediation.mutateAsync({
-        issueId: generationTarget.issueId || '',
-        strategyId: recommended.strategyId,
-        strategies: result.strategies,
-        evaluations: batch.evaluations,
-      })
-    } catch {
-      // The failure is surfaced through generateRemediation.isError below.
-    }
-  }
-
   async function handleCompare() {
     if (!result || !batch || !generationTarget) return
     try {
@@ -847,6 +841,36 @@ function StrategySection({ scanId, context }: StrategySectionProps) {
       setComparison(compareResult)
     } catch {
       // The failure is surfaced through rankMutation.isError below.
+    }
+  }
+
+  async function handleRemediate() {
+    if (!result || !batch || !ranking || !generationTarget) return
+    const recommended = ranking.rankedStrategies.find((r) => r.rank === 1)
+    if (!recommended) return
+    try {
+      const proposal = await generateRemediation.mutateAsync({
+        issueId: generationTarget.issueId || '',
+        strategyId: recommended.strategyId,
+        strategies: result.strategies,
+        evaluations: batch.evaluations,
+      })
+      setRemediationProposal(proposal)
+    } catch {
+      // The failure is surfaced through generateRemediation.isError below.
+    }
+  }
+
+  async function handleMeasure() {
+    if (!remediationProposal || !followupScanId) return
+    try {
+      const measurement = await createMeasurement.mutateAsync({
+        remediationId: remediationProposal.id,
+        followupScanId,
+      })
+      setMeasurementResult(measurement)
+    } catch {
+      // The failure is surfaced through createMeasurement.isError below.
     }
   }
 
@@ -1207,27 +1231,284 @@ function StrategySection({ scanId, context }: StrategySectionProps) {
                 </p>
               ) : null}
 
-              <Button
-                onClick={() => void handleRemediate()}
-                disabled={generateRemediation.isPending || !ranking.rankedStrategies.find((r) => r.rank === 1)}
-                aria-busy={generateRemediation.isPending}
-              >
-                {generateRemediation.isPending ? (
-                  <>
-                    <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-                    Generating remediation…
-                  </>
-                ) : (
-                  <>
-                    <Wand2 className="size-4" aria-hidden="true" />
-                    Generate remediation
-                  </>
-                )}
-              </Button>
+              {!remediationProposal ? (
+                <Button
+                  onClick={() => void handleRemediate()}
+                  disabled={generateRemediation.isPending || !ranking.rankedStrategies.find((r) => r.rank === 1)}
+                  aria-busy={generateRemediation.isPending}
+                >
+                  {generateRemediation.isPending ? (
+                    <>
+                      <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                      Generating remediation…
+                    </>
+                  ) : (
+                    <>
+                      <Wand2 className="size-4" aria-hidden="true" />
+                      Generate remediation
+                    </>
+                  )}
+                </Button>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Badge variant="default">Proposal generated</Badge>
+                    <span>{remediationProposal.title}</span>
+                  </div>
+                  <p className="text-sm">{remediationProposal.summary}</p>
+                  <p className="text-sm text-muted-foreground">{remediationProposal.rationale}</p>
+
+                  <div className="space-y-2">
+                    <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Implementation steps
+                    </h4>
+                    <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
+                      {remediationProposal.implementationSteps.map((step, i) => (
+                        <li key={`rem-step-${i}`}>{step}</li>
+                      ))}
+                    </ol>
+                  </div>
+
+                  {remediationProposal.proposedChange && (
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Before</h4>
+                        <pre className="max-h-48 overflow-auto rounded-md bg-accent/60 p-3 text-xs text-foreground">
+                          <code>{remediationProposal.proposedChange.before}</code>
+                        </pre>
+                      </div>
+                      <div className="space-y-1">
+                        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Proposed after</h4>
+                        <pre className="max-h-48 overflow-auto rounded-md bg-accent/60 p-3 text-xs text-foreground">
+                          <code>{remediationProposal.proposedChange.after}</code>
+                        </pre>
+                      </div>
+                    </div>
+                  )}
+
+                  {remediationProposal.expectedImprovement && (
+                    <p className="text-sm text-muted-foreground">
+                      <span className="font-medium">Expected improvement:</span>{' '}
+                      {remediationProposal.expectedImprovement}
+                    </p>
+                  )}
+
+                  {remediationProposal.risks.length > 0 && (
+                    <div className="space-y-1">
+                      <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Risks</h4>
+                      <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+                        {remediationProposal.risks.map((risk, i) => (
+                          <li key={`rem-risk-${i}`}>{risk}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {remediationProposal.validationSteps.length > 0 && (
+                    <div className="space-y-1">
+                      <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Validation steps
+                      </h4>
+                      <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+                        {remediationProposal.validationSteps.map((step, i) => (
+                          <li key={`rem-val-${i}`}>{step}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  <p className="text-xs text-muted-foreground">
+                    Confidence: {Math.round(remediationProposal.confidence * 100)}% · Provider: {remediationProposal.provider}
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
       ) : null}
+
+      {remediationProposal && (remediationProposal.status === 'ACCEPTED' || remediationProposal.status === 'APPLIED') && (
+        <div className="mt-4 space-y-4">
+          <Card className="gap-4">
+            <CardHeader className="gap-2">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <ScanLine className="size-4 text-muted-foreground" aria-hidden="true" />
+                Verify remediation
+              </CardTitle>
+              <CardDescription>
+                Accepted remediation does NOT mean verified improvement. Only a follow-up scan
+                can determine whether accessibility actually improved. Apply the proposed change
+                externally, run a new scan, then enter the follow-up scan ID below.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {!measurementResult ? (
+                <div className="space-y-3">
+                  <div className="flex items-end gap-3">
+                    <div className="min-w-52 flex-1 space-y-2">
+                      <Label htmlFor="followup-scan-id">Follow-up scan ID</Label>
+                      <input
+                        id="followup-scan-id"
+                        value={followupScanId}
+                        onChange={(e) => setFollowupScanId(e.target.value)}
+                        placeholder="Enter the scan ID after applying the fix"
+                        className="w-full rounded-md border bg-transparent px-3 py-2 text-sm"
+                      />
+                    </div>
+                    <Button
+                      onClick={() => void handleMeasure()}
+                      disabled={createMeasurement.isPending || !followupScanId}
+                      aria-busy={createMeasurement.isPending}
+                    >
+                      {createMeasurement.isPending ? (
+                        <>
+                          <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                          Measuring…
+                        </>
+                      ) : (
+                        <>
+                          <ScanLine className="size-4" aria-hidden="true" />
+                          Verify remediation
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                  {createMeasurement.isError && (
+                    <p role="alert" className="text-sm text-destructive">
+                      {errorMessage(createMeasurement.error)}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2">
+                    <Badge
+                      variant={
+                        measurementResult.status === 'IMPROVED'
+                          ? 'default'
+                          : measurementResult.status === 'REGRESSED'
+                            ? 'destructive'
+                            : 'secondary'
+                      }
+                    >
+                      {measurementResult.status === 'IMPROVED' && '✅ Improved'}
+                      {measurementResult.status === 'NO_CHANGE' && '➖ No change'}
+                      {measurementResult.status === 'REGRESSED' && '⚠️ Regressed'}
+                      {measurementResult.status === 'COMPLETED' && '✔️ Completed'}
+                    </Badge>
+                    <span className="text-sm text-muted-foreground">{measurementResult.measurementSummary}</span>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Card className="gap-3">
+                      <CardHeader className="gap-1">
+                        <CardTitle className="text-sm">Before (original scan)</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Accessibility score</span>
+                          <span className="font-semibold">
+                            {measurementResult.originalAccessibilityScore ?? '—'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Total issues</span>
+                          <span className="font-semibold">{measurementResult.originalIssueCount}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Critical</span>
+                          <span>{measurementResult.criticalBefore}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Serious</span>
+                          <span>{measurementResult.seriousBefore}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Moderate</span>
+                          <span>{measurementResult.moderateBefore}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Minor</span>
+                          <span>{measurementResult.minorBefore}</span>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="gap-3">
+                      <CardHeader className="gap-1">
+                        <CardTitle className="text-sm">After (follow-up scan)</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Accessibility score</span>
+                          <span className="font-semibold">
+                            {measurementResult.followupAccessibilityScore ?? '—'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Total issues</span>
+                          <span className="font-semibold">{measurementResult.followupIssueCount}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Critical</span>
+                          <span>{measurementResult.criticalAfter}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Serious</span>
+                          <span>{measurementResult.seriousAfter}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Moderate</span>
+                          <span>{measurementResult.moderateAfter}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Minor</span>
+                          <span>{measurementResult.minorAfter}</span>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-4 rounded-lg border p-3 text-sm">
+                    <div className="text-center">
+                      <p className="text-lg font-bold text-emerald-600">{measurementResult.issuesResolved}</p>
+                      <p className="text-xs text-muted-foreground">Issues resolved</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-lg font-bold text-amber-600">{measurementResult.issuesRemaining}</p>
+                      <p className="text-xs text-muted-foreground">Issues remaining</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-lg font-bold text-rose-600">{measurementResult.newIssuesIntroduced}</p>
+                      <p className="text-xs text-muted-foreground">New issues</p>
+                    </div>
+                  </div>
+
+                  {measurementResult.scoreDelta !== null && (
+                    <p className="text-sm text-muted-foreground">
+                      <span className="font-medium">Score change:</span>{' '}
+                      <span className={measurementResult.scoreDelta > 0 ? 'text-emerald-600' : measurementResult.scoreDelta < 0 ? 'text-rose-600' : ''}>
+                        {measurementResult.scoreDelta > 0 ? '+' : ''}{measurementResult.scoreDelta.toFixed(1)}
+                      </span>
+                      {measurementResult.scoreImprovementPercentage !== null && (
+                        <span className="ml-2">
+                          ({measurementResult.scoreImprovementPercentage > 0 ? '+' : ''}{measurementResult.scoreImprovementPercentage.toFixed(1)}%)
+                        </span>
+                      )}
+                    </p>
+                  )}
+
+                  <p className="text-xs text-muted-foreground">
+                    This measurement is deterministic and based on actual scan data. It does NOT
+                    assume the remediation was applied — only the follow-up scan determines whether
+                    accessibility improved.
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </section>
   )
 }

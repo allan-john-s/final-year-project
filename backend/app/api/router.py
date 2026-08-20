@@ -6,7 +6,7 @@ business endpoints (``/api/v1``) are mounted below them.
 
 from fastapi import APIRouter
 
-from app.api.routes import auth, context, evaluations, health, projects, rankings, remediations, root, scans, strategies
+from app.api.routes import auth, context, evaluations, health, measurements, projects, rankings, remediations, root, scans, strategies
 
 api_router = APIRouter()
 api_router.include_router(root.router)
@@ -21,3 +21,5 @@ api_router.include_router(evaluations.router, prefix="/api/v1")
 api_router.include_router(rankings.router, prefix="/api/v1")
 api_router.include_router(remediations.router, prefix="/api/v1")
 api_router.include_router(remediations.remediation_router, prefix="/api/v1")
+api_router.include_router(measurements.router, prefix="/api/v1")
+api_router.include_router(measurements.measurement_router, prefix="/api/v1")
