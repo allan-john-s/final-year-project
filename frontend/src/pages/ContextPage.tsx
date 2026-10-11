@@ -20,7 +20,7 @@ import { useState, type ComponentProps } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
 import { AppHeader } from '@/components/layout/AppHeader'
-import { useGenerateRemediation } from '@/hooks/useRemediations'
+import { useGenerateRemediation, useUpdateRemediationStatus } from '@/hooks/useRemediations'
 import { useCreateMeasurement } from '@/hooks/useMeasurements'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -39,7 +39,7 @@ import type {
 } from '@/services/strategyService'
 import type { ContextFactor, RankingBatch, RankedStrategy } from '@/services/rankingService'
 import type { ImprovementMeasurement } from '@/services/measurementService'
-import type { RemediationProposal } from '@/services/remediationService'
+import type { RemediationProposal, RemediationStatus } from '@/services/remediationService'
 
 type BadgeVariant = ComponentProps<typeof Badge>['variant']
 
@@ -56,6 +56,17 @@ const GROUP_TYPE_LABEL: Record<string, string> = {
   wcag: 'WCAG criterion',
 }
 
+const REMEDIATION_STATUS_STYLE: Record<
+  RemediationStatus,
+  { label: string; variant: BadgeVariant }
+> = {
+  PROPOSED: { label: 'PROPOSED', variant: 'secondary' },
+  REVIEWED: { label: 'REVIEWED', variant: 'secondary' },
+  ACCEPTED: { label: 'ACCEPTED', variant: 'default' },
+  REJECTED: { label: 'REJECTED', variant: 'destructive' },
+  APPLIED: { label: 'APPLIED', variant: 'default' },
+}
+
 function formatDate(value: string | null): string {
   if (!value) return '—'
   const date = new Date(value)
@@ -65,6 +76,25 @@ function formatDate(value: string | null): string {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Something went wrong. Please try again.'
+}
+
+/**
+ * Format a score/dimension value for display without crashing.
+ *
+ * Ranking payloads are mapped from the API and a value can legitimately be
+ * missing (undefined/null) or non-numeric if a backend field is absent. Show
+ * a dash instead of throwing on `.toFixed()` of an undefined value. Real
+ * numbers are formatted exactly as before — nothing is replaced by defaults.
+ */
+function formatScore(value: unknown, digits = 2): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '—'
+  return value.toFixed(digits)
+}
+
+/** Format a 0–1 confidence value as a percentage without crashing. */
+function formatPercent(value: unknown): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '—'
+  return `${Math.round(value * 100)}%`
 }
 
 function attributesToText(attributes: Record<string, string>): string {
@@ -549,7 +579,7 @@ function RankedStrategyCard({
             </CardTitle>
           </div>
           <div className="text-right">
-            <p className="text-2xl font-bold tabular-nums">{ranked.weightedScore.toFixed(2)}</p>
+            <p className="text-2xl font-bold tabular-nums">{formatScore(ranked.weightedScore)}</p>
             <p className="text-xs text-muted-foreground">weighted score</p>
           </div>
         </div>
@@ -557,9 +587,13 @@ function RankedStrategyCard({
 
       <CardContent className="space-y-3 text-sm">
         <div className="space-y-1.5">
-          {Object.entries(ranked.dimensionScores).map(([dim, score]) => (
-            <ScoreBar key={dim} label={DIMENSION_LABELS[dim] ?? dim} score={score} />
-          ))}
+          {Object.entries(ranked.dimensionScores)
+            .filter((entry): entry is [string, number] =>
+              typeof entry[1] === 'number' && Number.isFinite(entry[1]),
+            )
+            .map(([dim, score]) => (
+              <ScoreBar key={dim} label={DIMENSION_LABELS[dim] ?? dim} score={score} />
+            ))}
         </div>
 
         {ranked.strengths.length > 0 ? (
@@ -594,7 +628,7 @@ function RankedStrategyCard({
         ) : null}
 
         <p className="border-t pt-3 text-xs text-muted-foreground">
-          Confidence: {Math.round(ranked.confidence * 100)}%
+          Confidence: {formatPercent(ranked.confidence)}
         </p>
       </CardContent>
     </Card>
@@ -641,12 +675,17 @@ function RankingResults({
           {Object.entries(ranking.weightsUsed).map(([key, value]) => (
             <div key={key} className="flex items-center justify-between">
               <span className="text-muted-foreground">{DIMENSION_LABELS[key] ?? key}</span>
-              <span className="font-mono tabular-nums">{(value as number).toFixed(2)}</span>
+              <span className="font-mono tabular-nums">{formatScore(value)}</span>
             </div>
           ))}
         </div>
         <p className="pt-1 text-muted-foreground">
-          Total: {Object.values(ranking.weightsUsed).reduce((a, b) => a + (b as number), 0).toFixed(2)}
+          Total: {formatScore(
+            Object.values(ranking.weightsUsed).reduce(
+              (sum, value) => sum + (typeof value === 'number' && Number.isFinite(value) ? value : 0),
+              0,
+            ),
+          )}
         </p>
       </div>
 
@@ -687,7 +726,7 @@ function RankingResults({
                     const s = strategies.find((st) => st.strategyId === r.strategyId)
                     return (
                       <li key={r.strategyId} className="text-muted-foreground">
-                        {s?.title ?? r.strategyId} ({r.weightedScore.toFixed(2)})
+                        {s?.title ?? r.strategyId} ({formatScore(r.weightedScore)})
                       </li>
                     )
                   })}
@@ -702,7 +741,7 @@ function RankingResults({
                     const s = strategies.find((st) => st.strategyId === r.strategyId)
                     return (
                       <li key={r.strategyId} className="text-muted-foreground">
-                        {s?.title ?? r.strategyId} ({r.weightedScore.toFixed(2)})
+                        {s?.title ?? r.strategyId} ({formatScore(r.weightedScore)})
                       </li>
                     )
                   })}
@@ -745,6 +784,7 @@ function StrategySection({ scanId, context }: StrategySectionProps) {
   const [comparison, setComparison] = useState<RankingBatch | null>(null)
   const [rankingMode, setRankingMode] = useState<'baseline' | 'contextual'>('contextual')
   const generateRemediation = useGenerateRemediation(scanId)
+  const updateRemediationStatus = useUpdateRemediationStatus(scanId)
   const createMeasurement = useCreateMeasurement()
   const [remediationProposal, setRemediationProposal] = useState<RemediationProposal | null>(null)
   const [measurementResult, setMeasurementResult] = useState<ImprovementMeasurement | null>(null)
@@ -858,6 +898,19 @@ function StrategySection({ scanId, context }: StrategySectionProps) {
       setRemediationProposal(proposal)
     } catch {
       // The failure is surfaced through generateRemediation.isError below.
+    }
+  }
+
+  async function handleStatusChange(status: RemediationStatus) {
+    if (!remediationProposal) return
+    try {
+      const updated = await updateRemediationStatus.mutateAsync({
+        proposalId: remediationProposal.id,
+        status,
+      })
+      setRemediationProposal(updated)
+    } catch {
+      // The failure is surfaced through updateRemediationStatus.isError below.
     }
   }
 
@@ -1252,7 +1305,9 @@ function StrategySection({ scanId, context }: StrategySectionProps) {
               ) : (
                 <div className="space-y-4">
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Badge variant="default">Proposal generated</Badge>
+                    <Badge variant={REMEDIATION_STATUS_STYLE[remediationProposal.status].variant}>
+                      {REMEDIATION_STATUS_STYLE[remediationProposal.status].label}
+                    </Badge>
                     <span>{remediationProposal.title}</span>
                   </div>
                   <p className="text-sm">{remediationProposal.summary}</p>
@@ -1320,6 +1375,76 @@ function StrategySection({ scanId, context }: StrategySectionProps) {
                   <p className="text-xs text-muted-foreground">
                     Confidence: {Math.round(remediationProposal.confidence * 100)}% · Provider: {remediationProposal.provider}
                   </p>
+
+                  <div className="flex flex-wrap items-center gap-2 border-t pt-4">
+                    {updateRemediationStatus.isError && (
+                      <p role="alert" className="w-full text-sm text-destructive">
+                        {errorMessage(updateRemediationStatus.error)}
+                      </p>
+                    )}
+                    {remediationProposal.status === 'PROPOSED' && (
+                      <Button
+                        onClick={() => void handleStatusChange('REVIEWED')}
+                        disabled={updateRemediationStatus.isPending}
+                        aria-busy={updateRemediationStatus.isPending}
+                      >
+                        {updateRemediationStatus.isPending ? (
+                          <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                        ) : (
+                          <BookOpen className="size-4" aria-hidden="true" />
+                        )}
+                        Mark as Reviewed
+                      </Button>
+                    )}
+                    {remediationProposal.status === 'REVIEWED' && (
+                      <>
+                        <Button
+                          onClick={() => void handleStatusChange('ACCEPTED')}
+                          disabled={updateRemediationStatus.isPending}
+                          aria-busy={updateRemediationStatus.isPending}
+                        >
+                          {updateRemediationStatus.isPending ? (
+                            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                          ) : (
+                            <Shield className="size-4" aria-hidden="true" />
+                          )}
+                          Accept
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          onClick={() => void handleStatusChange('REJECTED')}
+                          disabled={updateRemediationStatus.isPending}
+                        >
+                          Reject
+                        </Button>
+                      </>
+                    )}
+                    {remediationProposal.status === 'ACCEPTED' && (
+                      <Button
+                        onClick={() => void handleStatusChange('APPLIED')}
+                        disabled={updateRemediationStatus.isPending}
+                        aria-busy={updateRemediationStatus.isPending}
+                      >
+                        {updateRemediationStatus.isPending ? (
+                          <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                        ) : (
+                          <Zap className="size-4" aria-hidden="true" />
+                        )}
+                        Apply
+                      </Button>
+                    )}
+                    {remediationProposal.status === 'REJECTED' && (
+                      <p className="text-sm text-muted-foreground">
+                        This proposal was rejected — no further action is available.
+                      </p>
+                    )}
+                    {remediationProposal.status === 'APPLIED' && (
+                      <p className="text-sm text-muted-foreground">
+                        This proposal has been applied. Run a follow-up scan below to verify the
+                        improvement.
+                      </p>
+                    )}
+                  </div>
                 </div>
               )}
             </CardContent>

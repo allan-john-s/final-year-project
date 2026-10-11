@@ -74,7 +74,11 @@ const rankingBatchRow = {
     accessibility_impact: 0.2,
     standards_compliance: 0.15,
     contextual_suitability: 0.15,
-    implementation_effort_score: 0.15,
+    // The backend serializes the weight under `implementation_effort` —
+    // NOT `implementation_effort_score` (score suffix is used only for the
+    // seven evaluation dimensions). Mapping the wrong key made the weight
+    // undefined and crashed the weights panel's `.toFixed()` call.
+    implementation_effort: 0.15,
     maintainability: 0.1,
     compatibility: 0.1,
     risk: 0.15,
@@ -150,6 +154,14 @@ describe('rankingService', () => {
     expect(result.issueId).toBe('issue-1')
     expect(result.rankingMethod).toBe('contextual')
     expect(result.weightsUsed.accessibilityImpact).toBe(0.2)
+    expect(result.weightsUsed.standardsCompliance).toBe(0.15)
+    expect(result.weightsUsed.contextualSuitability).toBe(0.15)
+    // Regression: the implementation-effort weight must be mapped from the
+    // real backend key, not silently become undefined.
+    expect(result.weightsUsed.implementationEffort).toBe(0.15)
+    expect(result.weightsUsed.maintainability).toBe(0.1)
+    expect(result.weightsUsed.compatibility).toBe(0.1)
+    expect(result.weightsUsed.risk).toBe(0.15)
     expect(result.contextFactors).toHaveLength(1)
     expect(result.contextFactors[0].factor).toBe('critical_wcag_issue')
     expect(result.contextFactors[0].detected).toBe(true)

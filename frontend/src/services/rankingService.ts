@@ -69,7 +69,7 @@ interface WeightsRow {
   accessibility_impact: number
   standards_compliance: number
   contextual_suitability: number
-  implementation_effort_score: number
+  implementation_effort: number
   maintainability: number
   compatibility: number
   risk: number
@@ -112,7 +112,7 @@ function mapWeights(row: WeightsRow): RankingWeights {
     accessibilityImpact: row.accessibility_impact,
     standardsCompliance: row.standards_compliance,
     contextualSuitability: row.contextual_suitability,
-    implementationEffort: row.implementation_effort_score,
+    implementationEffort: row.implementation_effort,
     maintainability: row.maintainability,
     compatibility: row.compatibility,
     risk: row.risk,

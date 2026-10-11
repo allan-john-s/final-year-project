@@ -21,8 +21,10 @@ and the middleware/dependency plumbing stay unchanged.
 
 import asyncio
 from functools import lru_cache
+import ssl
 from typing import Any, Dict, Optional
 
+import certifi
 import jwt as _jwt
 from jwt import PyJWKClient
 
@@ -51,16 +53,22 @@ class SupabaseJwtVerifier:
         lifespan: float = JWKS_LIFESPAN_SECONDS,
         timeout: float = JWKS_TIMEOUT_SECONDS,
         client: Optional[PyJWKClient] = None,
+        ssl_context: Optional[ssl.SSLContext] = None,
     ) -> None:
         base_url = base_url.rstrip("/")
         self._issuer = f"{base_url}{ISSUER_PATH}"
         self._jwks_url = f"{base_url}{JWKS_PATH}"
         self._audience = audience
-        self._client = client or PyJWKClient(
-            self._jwks_url,
-            lifespan=lifespan,
-            timeout=timeout,
-        )
+        if client is None:
+            if ssl_context is None:
+                ssl_context = ssl.create_default_context(cafile=certifi.where())
+            client = PyJWKClient(
+                self._jwks_url,
+                lifespan=lifespan,
+                timeout=timeout,
+                ssl_context=ssl_context,
+            )
+        self._client = client
 
     @property
     def issuer(self) -> str:

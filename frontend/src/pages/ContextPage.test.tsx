@@ -12,7 +12,13 @@ import { useGenerateRemediation, useRemediations, useUpdateRemediationStatus } f
 import { useCreateMeasurement } from '@/hooks/useMeasurements'
 import { createAuthValue } from '@/test/authValue'
 import type { EvaluationBatch } from '@/services/evaluationService'
+import type { RankingBatch } from '@/services/rankingService'
 import type { CandidateStrategy, StrategyGeneration } from '@/services/strategyService'
+import type {
+  GenerateRemediationInput,
+  RemediationProposal,
+  RemediationStatus,
+} from '@/services/remediationService'
 
 import { ContextPage } from './ContextPage'
 
@@ -490,6 +496,229 @@ describe('ContextPage strategy generation', () => {
 
   const evaluationOutcome = { current: vi.fn() }
 
+  const RANKING_BATCH: RankingBatch = {
+    scanId: 's-1',
+    issueId: 'i-1',
+    groupId: null,
+    contextVersion: '1.0',
+    rankingVersion: '1.0',
+    rankingMethod: 'contextual',
+    weightsUsed: {
+      accessibilityImpact: 0.2,
+      standardsCompliance: 0.15,
+      contextualSuitability: 0.15,
+      implementationEffort: 0.15,
+      maintainability: 0.1,
+      compatibility: 0.1,
+      risk: 0.15,
+    },
+    contextFactors: [
+      {
+        factor: 'critical_wcag_issue',
+        detected: true,
+        influence: 0.3,
+        affectedDimensions: ['accessibility_impact', 'standards_compliance'],
+        explanation: 'The issue has critical or serious impact.',
+      },
+    ],
+    rankedStrategies: [
+      {
+        strategyId: 'native-1',
+        rank: 1,
+        weightedScore: 8.6,
+        dimensionScores: {
+          accessibility_impact: 9,
+          standards_compliance: 9,
+          contextual_suitability: 8,
+          implementation_effort: 8,
+          maintainability: 9,
+          compatibility: 9,
+          risk: 8,
+        },
+        strengths: ['Low maintenance burden.'],
+        weaknesses: ['Native element may change styling.'],
+        rankingExplanation: 'Ranked first for strong impact and compliance.',
+        confidence: 0.9,
+      },
+      {
+        strategyId: 'structural-2',
+        rank: 2,
+        weightedScore: 7.4,
+        dimensionScores: {
+          accessibility_impact: 9,
+          standards_compliance: 8,
+          contextual_suitability: 8,
+          implementation_effort: 5,
+          maintainability: 7,
+          compatibility: 8,
+          risk: 6,
+        },
+        strengths: ['Fixes every occurrence.'],
+        weaknesses: ['Shared templates may affect other pages.'],
+        rankingExplanation: 'Ranked second because of higher effort.',
+        confidence: 0.7,
+      },
+      {
+        strategyId: 'aria-3',
+        rank: 3,
+        weightedScore: 6.1,
+        dimensionScores: {
+          accessibility_impact: 6,
+          standards_compliance: 7,
+          contextual_suitability: 6,
+          implementation_effort: 5,
+          maintainability: 5,
+          compatibility: 6,
+          risk: 5,
+        },
+        strengths: ['Works without DOM changes.'],
+        weaknesses: ['ARIA does not change behavior.'],
+        rankingExplanation: 'Ranked last for lower impact.',
+        confidence: 0.5,
+      },
+    ],
+    generatedAt: '2026-08-17T00:00:00Z',
+  }
+
+  /**
+   * A real stateful stand-in for the ranking mutation, mirroring
+   * FakeUseGenerateStrategies: isPending/isError transitions re-render
+   * and the resolved batch drives the ranking UI.
+   */
+  function FakeUseRankStrategies() {
+    const [isPending, setIsPending] = useState(false)
+    const [isError, setIsError] = useState(false)
+    const [error, setError] = useState<Error | null>(null)
+    const [data, setData] = useState<RankingBatch | null>(null)
+
+    const mutateAsync = async (input: {
+      issueId?: string
+      groupId?: string
+      strategies: CandidateStrategy[]
+      evaluations: EvaluationBatch['evaluations']
+      mode?: 'baseline' | 'contextual'
+    }) => {
+      setIsPending(true)
+      try {
+        const result = await rankingOutcome.current(input)
+        setIsPending(false)
+        setIsError(false)
+        setError(null)
+        setData(result)
+        return result
+      } catch (err) {
+        setIsPending(false)
+        setIsError(true)
+        setError(err instanceof Error ? err : new Error(String(err)))
+        setData(null)
+        throw err
+      }
+    }
+
+    return { isPending, isError, error, data, mutateAsync } as never
+  }
+
+  const rankingOutcome = { current: vi.fn() }
+
+  const PROPOSAL: RemediationProposal = {
+    id: 'rem-1',
+    scanId: 's-1',
+    issueId: 'i-1',
+    strategyId: 'native-1',
+    rank: 1,
+    title: 'Use native HTML to fix the color contrast',
+    summary: 'Replace the low-contrast element with a native element that satisfies the rule.',
+    rationale: 'Native semantics are exposed to assistive technology and fix the root cause.',
+    implementationSteps: ['Open the component in the codebase', 'Swap the muted class for a contrast-safe one'],
+    proposedChange: {
+      before: '<span class="muted">Create your account</span>',
+      after: '<span class="text-foreground">Create your account</span>',
+      filePath: 'src/pages/Home.tsx',
+      lineNumber: 42,
+      explanation: 'Raise contrast so the text meets WCAG 1.4.3.',
+    },
+    affectedElement: '<span class="muted">Create your account</span>',
+    expectedImprovement: 'The color-contrast issue is resolved for this element.',
+    risks: ['A visual redesign may affect brand styling'],
+    validationSteps: ['Re-run the scan', 'Visually confirm the contrast'],
+    provider: 'mock',
+    confidence: 0.92,
+    status: 'PROPOSED',
+    remediationVersion: '1.0',
+    createdAt: '2026-08-18T00:00:00Z',
+    updatedAt: '2026-08-18T00:00:00Z',
+  }
+
+  // Mutable proposal + outcome controllers so sequential status transitions
+  // behave like the real backend (each update starts from the current state).
+  const remediationState = { current: PROPOSAL }
+  const remediationOutcome = { current: vi.fn() }
+  const statusUpdateOutcome = { current: vi.fn() }
+
+  /**
+   * A real stateful stand-in for the remediation generation mutation,
+   * mirroring the generate/evaluate/rank fakes above.
+   */
+  function FakeUseGenerateRemediation() {
+    const [isPending, setIsPending] = useState(false)
+    const [isError, setIsError] = useState(false)
+    const [error, setError] = useState<Error | null>(null)
+    const [data, setData] = useState<RemediationProposal | null>(null)
+
+    const mutateAsync = async (input: GenerateRemediationInput) => {
+      setIsPending(true)
+      try {
+        const result = await remediationOutcome.current(input)
+        setIsPending(false)
+        setIsError(false)
+        setError(null)
+        setData(result)
+        return result
+      } catch (err) {
+        setIsPending(false)
+        setIsError(true)
+        setError(err instanceof Error ? err : new Error(String(err)))
+        setData(null)
+        throw err
+      }
+    }
+
+    return { isPending, isError, error, data, mutateAsync } as never
+  }
+
+  /**
+   * A real stateful stand-in for the status update mutation, mirroring the
+   * generate/evaluate/rank fakes above. The outcome is driven by
+   * `statusUpdateOutcome.current`, which defaults to applying the transition
+   * on top of the current `remediationState`.
+   */
+  function FakeUseUpdateRemediationStatus() {
+    const [isPending, setIsPending] = useState(false)
+    const [isError, setIsError] = useState(false)
+    const [error, setError] = useState<Error | null>(null)
+    const [data, setData] = useState<RemediationProposal | null>(null)
+
+    const mutateAsync = async (input: { proposalId: string; status: RemediationStatus }) => {
+      setIsPending(true)
+      try {
+        const result = await statusUpdateOutcome.current(input.proposalId, input.status)
+        setIsPending(false)
+        setIsError(false)
+        setError(null)
+        setData(result)
+        return result
+      } catch (err) {
+        setIsPending(false)
+        setIsError(true)
+        setError(err instanceof Error ? err : new Error(String(err)))
+        setData(null)
+        throw err
+      }
+    }
+
+    return { isPending, isError, error, data, mutateAsync } as never
+  }
+
   afterEach(() => {
     cleanup()
   })
@@ -508,20 +737,11 @@ describe('ContextPage strategy generation', () => {
     mockedUseGenerate.mockImplementation(FakeUseGenerateStrategies)
     evaluationOutcome.current = vi.fn().mockResolvedValue(EVALUATION_BATCH)
     mockedUseEvaluate.mockImplementation(FakeUseEvaluateStrategies)
-    mockedUseRank.mockReturnValue({
-      isPending: false,
-      isError: false,
-      error: null,
-      data: null,
-      mutateAsync: vi.fn(),
-    } as never)
-    mockedUseGenerateRemediation.mockReturnValue({
-      isPending: false,
-      isError: false,
-      error: null,
-      data: null,
-      mutateAsync: vi.fn(),
-    } as never)
+    rankingOutcome.current = vi.fn().mockResolvedValue(RANKING_BATCH)
+    mockedUseRank.mockImplementation(FakeUseRankStrategies)
+    remediationState.current = PROPOSAL
+    remediationOutcome.current = vi.fn().mockResolvedValue(PROPOSAL)
+    mockedUseGenerateRemediation.mockImplementation(FakeUseGenerateRemediation)
     mockedUseRemediations.mockReturnValue({
       data: undefined,
       isLoading: false,
@@ -529,13 +749,19 @@ describe('ContextPage strategy generation', () => {
       error: null,
       refetch: vi.fn(),
     } as never)
-    mockedUseUpdateRemediationStatus.mockReturnValue({
-      isPending: false,
-      isError: false,
-      error: null,
-      data: null,
-      mutateAsync: vi.fn(),
-    } as never)
+    statusUpdateOutcome.current = vi.fn(
+      async (_proposalId: string, status: RemediationStatus) => {
+        // Mirror the backend transition: copy the current proposal with the
+        // requested status applied.
+        remediationState.current = {
+          ...remediationState.current,
+          status,
+          updatedAt: '2026-08-18T01:00:00Z',
+        }
+        return remediationState.current
+      },
+    )
+    mockedUseUpdateRemediationStatus.mockImplementation(FakeUseUpdateRemediationStatus)
     mockedUseCreateMeasurement.mockReturnValue({
       isPending: false,
       isError: false,
@@ -711,5 +937,261 @@ describe('ContextPage strategy generation', () => {
     expect(screen.queryByText('Use this strategy')).toBeNull()
     // Evaluations are labeled as independent, never ranked.
     expect(screen.getAllByText('Independent evaluation of this candidate — no ranking, no total score.')).toHaveLength(3)
+  })
+
+  async function driveToEvaluations() {
+    renderPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }))
+    await screen.findByText('Candidate Strategy 1')
+    fireEvent.click(screen.getByRole('button', { name: 'Evaluate strategies' }))
+    await screen.findByText('Candidate Strategy 1 · evaluated')
+  }
+
+  it('ranks strategies contextually and shows the recommended strategy', async () => {
+    await driveToEvaluations()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rank strategies' }))
+
+    expect(await screen.findByText('Recommended Strategy')).toBeInTheDocument()
+    expect(screen.getByText('Rank 2')).toBeInTheDocument()
+    expect(screen.getByText('Rank 3')).toBeInTheDocument()
+    // Medals for the top three ranks.
+    expect(screen.getByText('🥇')).toBeInTheDocument()
+    expect(screen.getByText('🥈')).toBeInTheDocument()
+    expect(screen.getByText('🥉')).toBeInTheDocument()
+    // Weighted scores and the weights used are rendered.
+    expect(screen.getByText('8.60')).toBeInTheDocument()
+    expect(screen.getByText('Weights used')).toBeInTheDocument()
+    expect(screen.getByText('0.20')).toBeInTheDocument()
+    // Several dimensions share the 0.15 weight, so expect at least one.
+    expect(screen.getAllByText('0.15').length).toBeGreaterThan(0)
+    // Ranking explanation and context factors are shown.
+    expect(screen.getByText(/Ranked first for strong impact/)).toBeInTheDocument()
+    expect(screen.getByText(/Context factors detected/)).toBeInTheDocument()
+    expect(screen.getByText(/critical wcag issue/)).toBeInTheDocument()
+  })
+
+  it('ranks baseline and compares the two orderings', async () => {
+    const baselineBatch: RankingBatch = {
+      ...RANKING_BATCH,
+      rankingMethod: 'baseline',
+      weightsUsed: {
+        accessibilityImpact: 1 / 7,
+        standardsCompliance: 1 / 7,
+        contextualSuitability: 1 / 7,
+        implementationEffort: 1 / 7,
+        maintainability: 1 / 7,
+        compatibility: 1 / 7,
+        risk: 1 / 7,
+      },
+      rankedStrategies: [
+        RANKING_BATCH.rankedStrategies[1],
+        RANKING_BATCH.rankedStrategies[0],
+        RANKING_BATCH.rankedStrategies[2],
+      ].map((r, index) => ({ ...r, rank: index + 1 })),
+    }
+    rankingOutcome.current = vi
+      .fn()
+      .mockResolvedValueOnce(RANKING_BATCH)
+      .mockResolvedValueOnce(baselineBatch)
+
+    await driveToEvaluations()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rank strategies' }))
+    await screen.findByText('Recommended Strategy')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Compare with baseline' }))
+
+    expect(await screen.findByText('Baseline vs context-aware comparison')).toBeInTheDocument()
+    expect(
+      screen.getByText('Context-aware ranking changed the strategy order compared to baseline.'),
+    ).toBeInTheDocument()
+    // Both orderings are rendered with their weighted scores.
+    expect(screen.getByText('contextual ranking')).toBeInTheDocument()
+    expect(screen.getByText('baseline ranking')).toBeInTheDocument()
+  })
+
+  it('never crashes when numeric ranking fields are missing or null', async () => {
+    // Simulate a payload where the backend omitted the implementation-effort
+    // weight and a strategy came back without a weighted score or dimension
+    // scores. This used to crash the page with
+    // "Cannot read properties of undefined (reading 'toFixed')".
+    const missing = JSON.parse(JSON.stringify(RANKING_BATCH))
+    delete missing.weightsUsed.implementationEffort
+    missing.rankedStrategies[0].weightedScore = null
+    delete missing.rankedStrategies[1].dimensionScores.implementation_effort
+    missing.rankedStrategies[1].confidence = null
+    rankingOutcome.current = vi.fn().mockResolvedValue(missing)
+
+    await driveToEvaluations()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rank strategies' }))
+
+    // The page still renders the full ranking instead of going blank.
+    expect(await screen.findByText('Recommended Strategy')).toBeInTheDocument()
+    expect(screen.getByText('Rank 2')).toBeInTheDocument()
+    expect(screen.getByText('Weights used')).toBeInTheDocument()
+    // Missing values render as a dash rather than crashing.
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0)
+    expect(screen.getByText(/Ranked 3 strategies/)).toBeInTheDocument()
+  })
+
+  it('shows a ranking error and allows retry', async () => {
+    rankingOutcome.current = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('The ranking service timed out.'))
+      .mockResolvedValueOnce(RANKING_BATCH)
+
+    await driveToEvaluations()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rank strategies' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('The ranking service timed out.')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rank strategies' }))
+    expect(await screen.findByText('Recommended Strategy')).toBeInTheDocument()
+  })
+
+  async function driveToProposal() {
+    renderPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }))
+    await screen.findByText('Candidate Strategy 1')
+    fireEvent.click(screen.getByRole('button', { name: 'Evaluate strategies' }))
+    await screen.findByText('Candidate Strategy 1 · evaluated')
+    fireEvent.click(screen.getByRole('button', { name: 'Rank strategies' }))
+    await screen.findByText('Recommended Strategy')
+    fireEvent.click(screen.getByRole('button', { name: 'Generate remediation' }))
+    await screen.findByText(PROPOSAL.title)
+  }
+
+  it('shows a generated proposal with its status and full review content', async () => {
+    await driveToProposal()
+
+    // Status is visible and starts at PROPOSED.
+    expect(screen.getByText('PROPOSED')).toBeInTheDocument()
+    // Review content is preserved: summary, rationale, steps, before/after, …
+    expect(screen.getByText(PROPOSAL.summary)).toBeInTheDocument()
+    expect(screen.getByText(PROPOSAL.rationale)).toBeInTheDocument()
+    expect(screen.getByText('Open the component in the codebase')).toBeInTheDocument()
+    expect(screen.getByText(PROPOSAL.proposedChange.before)).toBeInTheDocument()
+    expect(screen.getByText(PROPOSAL.proposedChange.after)).toBeInTheDocument()
+    expect(screen.getByText(/Expected improvement:/)).toBeInTheDocument()
+    expect(screen.getByText(/92%/)).toBeInTheDocument()
+    // PROPOSED offers the review action.
+    expect(screen.getByRole('button', { name: 'Mark as Reviewed' })).toBeInTheDocument()
+  })
+
+  it('reviews a PROPOSED proposal (PROPOSED → REVIEWED)', async () => {
+    await driveToProposal()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mark as Reviewed' }))
+
+    expect(statusUpdateOutcome.current).toHaveBeenCalledWith('rem-1', 'REVIEWED')
+    expect(await screen.findByText('REVIEWED')).toBeInTheDocument()
+    // The review action is replaced by the accept/reject pair.
+    expect(screen.queryByRole('button', { name: 'Mark as Reviewed' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Accept' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Reject' })).toBeInTheDocument()
+  })
+
+  it('accepts a reviewed proposal (REVIEWED → ACCEPTED)', async () => {
+    await driveToProposal()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mark as Reviewed' }))
+    await screen.findByText('REVIEWED')
+    fireEvent.click(screen.getByRole('button', { name: 'Accept' }))
+
+    expect(statusUpdateOutcome.current).toHaveBeenLastCalledWith('rem-1', 'ACCEPTED')
+    expect(await screen.findByText('ACCEPTED')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Apply' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Reject' })).toBeNull()
+  })
+
+  it('rejects a reviewed proposal (REVIEWED → REJECTED) with no further actions', async () => {
+    await driveToProposal()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mark as Reviewed' }))
+    await screen.findByText('REVIEWED')
+    fireEvent.click(screen.getByRole('button', { name: 'Reject' }))
+
+    expect(statusUpdateOutcome.current).toHaveBeenLastCalledWith('rem-1', 'REJECTED')
+    expect(await screen.findByText('REJECTED')).toBeInTheDocument()
+    expect(screen.getByText(/no further action is available/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Mark as Reviewed' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Accept' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Reject' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Apply' })).toBeNull()
+    // A rejected proposal never unlocks the measurement section.
+    expect(screen.queryByLabelText('Follow-up scan ID')).toBeNull()
+  })
+
+  it('applies an accepted proposal (ACCEPTED → APPLIED)', async () => {
+    await driveToProposal()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mark as Reviewed' }))
+    await screen.findByText('REVIEWED')
+    fireEvent.click(screen.getByRole('button', { name: 'Accept' }))
+    await screen.findByText('ACCEPTED')
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
+
+    expect(statusUpdateOutcome.current).toHaveBeenLastCalledWith('rem-1', 'APPLIED')
+    expect(await screen.findByText('APPLIED')).toBeInTheDocument()
+    expect(screen.getByText(/has been applied/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Apply' })).toBeNull()
+  })
+
+  it('unlocks the measurement section after ACCEPTED without a refresh', async () => {
+    await driveToProposal()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mark as Reviewed' }))
+    await screen.findByText('REVIEWED')
+    fireEvent.click(screen.getByRole('button', { name: 'Accept' }))
+
+    // The Module 8 verify/measurement card is gated on ACCEPTED/APPLIED and
+    // must appear from local state alone — no page refresh.
+    expect(await screen.findByText('ACCEPTED')).toBeInTheDocument()
+    expect(screen.getAllByText('Verify remediation').length).toBeGreaterThan(0)
+    expect(
+      screen.getByText(/Accepted remediation does NOT mean verified improvement/),
+    ).toBeInTheDocument()
+    expect(screen.getByLabelText('Follow-up scan ID')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Apply' })).toBeInTheDocument()
+  })
+
+  it('surfaces a status update error and leaves the proposal reviewable', async () => {
+    statusUpdateOutcome.current = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('The remediation service is unavailable.'))
+      .mockImplementationOnce(async (_id: string, status: RemediationStatus) => {
+        remediationState.current = {
+          ...remediationState.current,
+          status,
+          updatedAt: '2026-08-18T01:00:00Z',
+        }
+        return remediationState.current
+      })
+    await driveToProposal()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mark as Reviewed' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The remediation service is unavailable.',
+    )
+    // The status did not change, so the action remains available for retry.
+    expect(screen.getByText('PROPOSED')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Mark as Reviewed' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mark as Reviewed' }))
+    expect(await screen.findByText('REVIEWED')).toBeInTheDocument()
+  })
+
+  it('disables the status button while the update is pending', async () => {
+    statusUpdateOutcome.current = vi.fn(() => new Promise(() => {}))
+    await driveToProposal()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mark as Reviewed' }))
+
+    const reviewButton = screen.getByRole('button', { name: 'Mark as Reviewed' })
+    expect(reviewButton).toBeDisabled()
+    expect(reviewButton).toHaveAttribute('aria-busy', 'true')
   })
 })

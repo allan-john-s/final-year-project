@@ -7,6 +7,7 @@ import {
   ScanLine,
   Sparkles,
 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -42,6 +43,7 @@ const pipeline = [
 ]
 
 export function LandingPage() {
+  const navigate = useNavigate()
   return (
     <div className="min-h-svh bg-background text-foreground antialiased">
       <header className="border-b">
@@ -68,7 +70,7 @@ export function LandingPage() {
             ranking, and explanation.
           </p>
           <div className="mt-8 flex items-center justify-center gap-4">
-            <Button>View the pipeline</Button>
+            <Button onClick={() => navigate('/login')}>View the pipeline</Button>
             <Button variant="outline">Read the docs</Button>
           </div>
         </section>
